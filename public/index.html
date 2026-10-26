@@ -3,13 +3,14 @@
 <title>Research Gallery</title><link rel="stylesheet" href="/style.css"></head>
 <body><main>
 <section class="hero">
-<div><h1>Student <b>Neuroscience</b><br>Research Gallery</h1>
-<p class="sub">Peer-shared papers from students everywhere. Every submission is reviewed by our officers before it appears here.</p>
-<a class="btn p" href="/submit.html">Submit your paper</a></div>
-<!-- Optional photo: drop any free brain/neuron image at public/images/hero.jpg (see README for sources). It blends in behind the animated brain. -->
-<div class="art"><img src="/images/hero.jpg" alt="" onerror="this.remove()"><canvas id="brain"></canvas></div>
+<div><span class="kicker">Student research archive</span><h1>A gallery of <em>student</em> neuroscience.</h1>
+<p class="sub">Papers shared by students everywhere, read and approved by our officers before they appear here.</p>
+<a class="btn p" href="/submit.html">Submit a paper</a></div>
+<!-- Optional photo: drop any free brain/neuron image at public/images/hero.jpg (see README). -->
+<figure class="fig"><div class="art"><img src="/images/hero.jpg" alt="" onerror="this.remove()"><canvas id="brain"></canvas></div><figcaption>Fig. 01 &mdash; Cortical network, lateral view</figcaption></figure>
 </section>
-<input id="q" class="search glass" placeholder="Search title, author, or school…" type="search">
+<div class="head"><h2 style="border:0;padding:0;margin:0">The collection</h2></div>
+<input id="q" class="search" placeholder="Search title, author, or school…" type="search">
 <div id="g" class="grid"></div>
 </main><footer>Reviewed by club officers</footer>
 <script src="/app.js"></script>
@@ -17,9 +18,9 @@
 let all=[];const g=document.getElementById("g");
 function draw(){const q=document.getElementById("q").value.toLowerCase();
 const r=all.filter(p=>[p.title,p.author,p.coauthors,p.school].join(" ").toLowerCase().includes(q));
-g.innerHTML=r.length?r.map(p=>`<article class="card glass"><span class="tag ok">${esc(p.school)}</span><h3>${esc(p.title)}</h3>
+g.innerHTML=r.length?r.map((p,i)=>`<article class="card glass"><div class="top"><span>N°${String(i+1).padStart(3,"0")}</span><span>${esc(p.school)}</span></div><h3>${esc(p.title)}</h3>
 <div class="m">${esc(p.author)}${p.coauthors?" · "+esc(p.coauthors):""}</div>
-<div class="acts">${p.file_name?`<a class="btn p" href="/api/file/${p.id}" target="_blank" rel="noopener">Read paper</a>`:""}${p.link?`<a class="btn" href="${esc(p.link)}" target="_blank" rel="noopener noreferrer">Google Doc</a>`:""}</div></article>`).join(""):`<div class="empty glass" style="grid-column:1/-1">No papers yet.</div>`}
+<div class="acts">${p.file_name?`<a class="btn p" href="/api/file/${p.id}" target="_blank" rel="noopener">Read paper →</a>`:""}${p.link?`<a class="btn p" href="${esc(p.link)}" target="_blank" rel="noopener noreferrer">Read paper →</a>`:""}</div></article>`).join(""):`<div class="empty glass" style="grid-column:1/-1">No papers yet.</div>`}
 fetch("/api/papers").then(r=>r.json()).then(d=>{all=d;draw()}).catch(()=>g.innerHTML='<div class="empty glass" style="grid-column:1/-1">Could not load papers.</div>');
 document.getElementById("q").oninput=draw;brain(document.getElementById("brain"));
 </script></body></html>
