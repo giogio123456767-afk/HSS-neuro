@@ -6,7 +6,7 @@ npm i -g wrangler && wrangler login
 wrangler d1 create neuro-gallery          # paste database_id into wrangler.toml
 wrangler d1 execute neuro-gallery --remote --file=schema.sql
 wrangler r2 bucket create neuro-papers
-wrangler pages project create neuro-gallery --production-branch main
+wrangler pages project create neuro-gallery --prod uction-branch main
 wrangler pages deploy public
 wrangler pages secret put ADMIN_PASSWORD  # enter N3UR0 (recommended)
 ```
