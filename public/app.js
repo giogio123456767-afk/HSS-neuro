@@ -1,83 +1,47 @@
-// Single router for all /api/* routes (Cloudflare Pages Functions)
-// Bindings: DB (D1), BUCKET (R2). Secret: ADMIN_PASSWORD (falls back to N3UR0).
-const J = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { "content-type": "application/json", "cache-control": "no-store" } });
-const MAX = 20 * 1024 * 1024;
-const EXT = { pdf: "application/pdf", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
+// ===== EDIT ME =====
+const CLUB_NAME = "Neuroscience Club";
+// ===================
 
-function isAdmin(req, env, url) {
-  const given = req.headers.get("x-admin-password") || url.searchParams.get("k") || "";
-  const real = env.ADMIN_PASSWORD || "N3UR0";
-  let diff = given.length ^ real.length;                       // constant-time compare
-  for (let i = 0; i < real.length; i++) diff |= (given.charCodeAt(i) || 0) ^ real.charCodeAt(i);
-  return diff === 0;
-}
-const clean = (v, n) => String(v ?? "").trim().slice(0, n);
+document.head.insertAdjacentHTML("beforeend", '<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400&family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">');
+const PAGES = [["/", "Gallery"], ["/submit.html", "Submit"], ["/officers.html", "Officers"], ["/admin.html", "Admin"]];
+const here = location.pathname.replace(/index\.html$/, "");
+document.body.insertAdjacentHTML("afterbegin",
+  `<nav><a class="brand" href="/">${CLUB_NAME}</a>` +
+  PAGES.map(([h, t], i) => `<a class="l${here === h || here === h.replace(".html", "") ? " on" : ""}" href="${h}"><sup>0${i + 1}</sup>${t}</a>`).join("") + `</nav>`);
 
-export async function onRequest({ request, env, params }) {
-  const url = new URL(request.url);
-  const [route, arg] = [].concat(params.path || []);
-  const m = request.method;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const still = matchMedia("(prefers-reduced-motion:reduce)").matches;
 
-  try {
-    // Public: approved papers
-    if (route === "papers" && m === "GET") {
-      const { results } = await env.DB.prepare(
-        "SELECT id,school,author,coauthors,title,link,file_name,created FROM papers WHERE status='approved' ORDER BY created DESC").all();
-      return J(results);
+// Hero figure: brain silhouette built from a neural mesh with travelling signals
+function brain(canvas) {
+  const x = canvas.getContext("2d"), dpr = devicePixelRatio || 1;
+  let W, H;
+  const fit = () => { W = canvas.clientWidth; H = canvas.clientHeight; canvas.width = W * dpr; canvas.height = H * dpr; x.setTransform(dpr, 0, 0, dpr, 0, 0); };
+  fit(); addEventListener("resize", fit);
+  const inside = (a, b) => {
+    const cer = ((a + .02) / .95) ** 2 + ((b + .08) / .6) ** 2 < 1 && !(b > .3 && a > .05 && a < .5 && ((a - .3) / .25) ** 2 + ((b - .5) / .22) ** 2 < 1);
+    const cb = ((a - .45) / .32) ** 2 + ((b - .48) / .17) ** 2 < 1;
+    const st = a > .05 && a < .2 && b > .3 && b < .85 - (a - .05) * 0.5;
+    return cer || cb || st;
+  };
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const pts = [];
+  while (pts.length < 230) { const a = rnd() * 2.1 - 1.05, b = rnd() * 1.6 - .8; if (inside(a, b) && pts.every(p => Math.hypot(p.a - a, p.b - b) > .05)) pts.push({ a, b, ph: rnd() * 6.28 }); }
+  const edges = [];
+  pts.forEach((p, i) => pts.forEach((q, j) => { if (j > i && Math.hypot(p.a - q.a, p.b - q.b) < .17) edges.push([i, j]); }));
+  const sig = Array.from({ length: 12 }, () => ({ e: rnd() * edges.length | 0, t: rnd() }));
+  const P = p => [W / 2 + p.a * W * .46, H / 2 + p.b * W * .46];
+  (function f(t) {
+    x.clearRect(0, 0, W, H);
+    x.lineWidth = .5; x.strokeStyle = "rgba(233,235,240,.22)";
+    for (const [i, j] of edges) { const [ax, ay] = P(pts[i]), [bx, by] = P(pts[j]); x.beginPath(); x.moveTo(ax, ay); x.lineTo(bx, by); x.stroke(); }
+    for (const p of pts) { const [px, py] = P(p), g = .5 + .5 * Math.sin(t / 1100 + p.ph); x.fillStyle = `rgba(233,235,240,${.35 + .4 * g})`; x.beginPath(); x.arc(px, py, 1 + g * .6, 0, 7); x.fill(); }
+    x.fillStyle = "#5b86ff";
+    for (const s of sig) {
+      if (!still) s.t += .018; if (s.t >= 1) { s.t = 0; s.e = rnd() * edges.length | 0; }
+      const [i, j] = edges[s.e], [ax, ay] = P(pts[i]), [bx, by] = P(pts[j]);
+      x.beginPath(); x.arc(ax + (bx - ax) * s.t, ay + (by - ay) * s.t, 2.2, 0, 7); x.fill();
     }
-
-    // Public: submit
-    if (route === "submit" && m === "POST") {
-      const f = await request.formData();
-      if (f.get("website")) return J({ ok: true });            // honeypot
-      const school = clean(f.get("school"), 150), author = clean(f.get("author"), 120), title = clean(f.get("title"), 250);
-      const coauthors = clean(f.get("coauthors"), 300), email = clean(f.get("email"), 150);
-      let link = clean(f.get("link"), 500);
-      if (!school || !author || !title) return J({ error: "School, author and title are required." }, 400);
-      if (email && !/^\S+@\S+\.\S+$/.test(email)) return J({ error: "Invalid email." }, 400);
-      if (link && !/^https:\/\/(docs|drive)\.google\.com\//.test(link)) return J({ error: "Link must be a Google Docs/Drive URL." }, 400);
-      if (!link) return J({ error: "Paste your Google Doc link." }, 400);
-      const id = crypto.randomUUID(), key = null, fname = null;
-      await env.DB.prepare("INSERT INTO papers (id,school,author,coauthors,email,title,link,file_key,file_name,status,created) VALUES (?,?,?,?,?,?,?,?,?,'pending',?)")
-        .bind(id, school, author, coauthors, email, title, link || null, key, fname, Date.now()).run();
-      return J({ ok: true });
-    }
-
-    // File download: approved = public, otherwise admin only
-    if (route === "file" && m === "GET" && arg) {
-      const row = await env.DB.prepare("SELECT status,file_key,file_name FROM papers WHERE id=?").bind(arg).first();
-      if (!row || !row.file_key || (row.status !== "approved" && !isAdmin(request, env, url))) return J({ error: "Not found" }, 404);
-      const obj = await env.BUCKET.get(row.file_key);
-      if (!obj) return J({ error: "Not found" }, 404);
-      const ext = row.file_key.split(".").pop();
-      const safe = row.file_name.replace(/[^\w.\- ]/g, "_");
-      return new Response(obj.body, { headers: {
-        "content-type": EXT[ext], "x-content-type-options": "nosniff",
-        "content-disposition": `${ext === "pdf" ? "inline" : "attachment"}; filename="${safe}"`,
-        "cache-control": row.status === "approved" ? "public, max-age=3600" : "no-store" } });
-    }
-
-    // Admin actions
-    if (route === "admin" && m === "POST") {
-      if (!isAdmin(request, env, url)) return J({ error: "Unauthorized" }, 401);
-      const { action, id } = await request.json();
-      if (action === "list") {
-        const { results } = await env.DB.prepare("SELECT id,school,author,coauthors,email,title,link,file_name,status,created FROM papers ORDER BY created DESC").all();
-        return J(results);
-      }
-      if (action === "approve" || action === "unpublish") {
-        await env.DB.prepare("UPDATE papers SET status=? WHERE id=?").bind(action === "approve" ? "approved" : "pending", id).run();
-        return J({ ok: true });
-      }
-      if (action === "delete") {
-        const row = await env.DB.prepare("SELECT file_key FROM papers WHERE id=?").bind(id).first();
-        if (row?.file_key) await env.BUCKET.delete(row.file_key);
-        await env.DB.prepare("DELETE FROM papers WHERE id=?").bind(id).run();
-        return J({ ok: true });
-      }
-    }
-    return J({ error: "Not found" }, 404);
-  } catch (e) {
-    return J({ error: "Server error" }, 500);
-  }
+    if (!still) requestAnimationFrame(f);
+  })(0);
 }
